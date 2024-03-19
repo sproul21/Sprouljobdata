@@ -75,24 +75,40 @@ func main() {
 			return
 		}
 
+		log.Printf("Selected Index for Update: %d", selectedIndex)
 		selectedData := globalData[selectedIndex]
+		log.Printf("Selected Data for Update: %+v", selectedData)
 
+		// Create and show the update form
 		updateForm := createUpdateForm(headers, selectedData, func(updatedData map[string]string) {
+			log.Printf("Submitted Data for Update: %+v", updatedData)
 
-			globalData[selectedIndex] = updatedData
+			// Check for any changes
+			if !mapsAreEqual(selectedData, updatedData) {
+				log.Println("Changes detected, updating record...")
 
-			err := writeExcelFile("Project2Data.xlsx", globalData, headers)
-			if err != nil {
-				dialog.ShowError(err, myWindow)
-				return
+				// Apply updated data and write back to Excel
+				globalData[selectedIndex] = updatedData
+				if err := writeExcelFile("Project2Data.xlsx", globalData, headers); err != nil {
+					dialog.ShowError(err, myWindow)
+					log.Printf("Error updating Excel file: %v", err)
+				} else {
+					log.Println("Record updated successfully.")
+					list.Refresh()
+					selectedRecord.SetText(formatRecordDetails(updatedData, headers))
+				}
+			} else {
+				log.Println("No changes detected, not updating.")
 			}
-
-			list.Refresh()
-
-			selectedRecord.SetText(formatRecordDetails(updatedData, headers))
 		})
 
-		dialog.ShowForm("Update Record", "Update", "Cancel", updateForm.Items, func(b bool) {}, myWindow)
+		dialog.ShowCustomConfirm("Update Record", "Update", "Cancel", updateForm, func(b bool) {
+			if b {
+				log.Println("Update form submitted.")
+			} else {
+				log.Println("Update form cancelled.")
+			}
+		}, myWindow)
 	})
 
 	buttons := container.NewVBox(
@@ -111,6 +127,18 @@ func main() {
 
 	myWindow.SetContent(content)
 	myWindow.ShowAndRun()
+}
+
+func mapsAreEqual(map1, map2 map[string]string) bool {
+	if len(map1) != len(map2) {
+		return false
+	}
+	for key, value1 := range map1 {
+		if value2, ok := map2[key]; !ok || value1 != value2 {
+			return false
+		}
+	}
+	return true
 }
 
 func loadExcelDataOnce(filePath string) {
@@ -186,13 +214,13 @@ func createAddForm(headers []string, onSubmit func(map[string]string)) *widget.F
 	}
 }
 
-func createUpdateForm(headers []string, currentData map[string]string, onUpdate func(map[string]string)) *widget.Form {
+func createUpdateForm(headers []string, currentData map[string]string, onSubmit func(map[string]string)) *widget.Form {
 	entries := make(map[string]*widget.Entry)
-	var items []*widget.FormItem
+	items := []*widget.FormItem{}
 
 	for _, header := range headers {
 		entry := widget.NewEntry()
-		entry.SetText(currentData[header])
+		entry.SetText(currentData[header]) // Pre-fill the form with current data
 		entries[header] = entry
 		items = append(items, widget.NewFormItem(header, entry))
 	}
@@ -200,11 +228,12 @@ func createUpdateForm(headers []string, currentData map[string]string, onUpdate 
 	return &widget.Form{
 		Items: items,
 		OnSubmit: func() {
-			updatedData := make(map[string]string)
+			data := map[string]string{}
 			for header, entry := range entries {
-				updatedData[header] = entry.Text
+				data[header] = entry.Text
+				entry.SetText("")
 			}
-			onUpdate(updatedData)
+			onSubmit(data)
 		},
 	}
 }
